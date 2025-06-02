@@ -4,22 +4,9 @@ from aiogram import Bot, Dispatcher
 from aiogram.fsm.storage.memory import MemoryStorage
 from config import Config
 from database.database import init_db
-from handlers import common, clients, sellers, orders
-from notifications.order_notifications import check_one_day_orders
-from scheduler import setup_scheduler
+from handlers import clients, sellers, orders, consumptions
+from utilities.scheduler import setup_scheduler  # Changed from on_startup
 from middleware.access import AccessMiddleware
-
-async def on_startup(bot: Bot):
-    """Функция, выполняемая при запуске бота"""
-    await setup_scheduler(bot)
-    
-    try:
-        await bot.send_message(
-            chat_id=Config.TELEGRAM_CHANNEL_ID,
-            text="✅ Бот и система уведомлений успешно запущены!"
-        )
-    except Exception as e:
-        logging.error(f"Не удалось отправить сообщение в канал: {e}")
 
 async def main():
     # Настройка логирования
@@ -36,17 +23,20 @@ async def main():
     dp = Dispatcher(storage=MemoryStorage())
     
     # Регистрация хэндлеров
-    clients.register_handlers(dp)
-    sellers.register_handlers(dp)
-    orders.register_handlers(dp)
-    
-    # Регистрация функции запуска
-    dp.startup.register(on_startup)
+    dp.include_router(clients.router)
+    dp.include_router(sellers.router)
+    dp.include_router(orders.router)
+    dp.include_router(consumptions.router)
+    # Регистрация middleware
     dp.update.middleware(AccessMiddleware())
     
-    # Запуск бота
+    # Запуск бота и планировщика
     await bot.delete_webhook(drop_pending_updates=True)
     logging.info("Бот успешно запущен")
+    
+    # Start the scheduler as a background task
+    asyncio.create_task(setup_scheduler(bot))
+    
     await dp.start_polling(bot)
 
 if __name__ == '__main__':

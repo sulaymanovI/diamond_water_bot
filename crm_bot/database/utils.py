@@ -14,7 +14,6 @@ async def create_db_engine():
         )
         return engine
     except SQLAlchemyError as e:
-        print(f"Ошибка подключения к БД: {e}")
         raise
 
 engine = asyncio.run(create_db_engine())
