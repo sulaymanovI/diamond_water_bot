@@ -90,7 +90,7 @@ class Consumptions(Base):
 
     __table_args__ = (
         CheckConstraint(
-            "consumption_owner IN ('Maxmudho'ja', 'Bositxon', 'Bekzod', 'Og'abek', 'Hodimlar')",
+            "consumption_owner IN ('Maxmudho'ja', 'Abdulbosit', 'Bekzod', 'Og'abek', 'Hodimlar')",
             name='check_consumption_owner'
         ),
     )

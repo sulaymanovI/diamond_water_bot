@@ -74,7 +74,7 @@ async def process_owner_selection(message: types.Message, state: FSMContext):
         await handle_back_to_main_menu(message, state)
         return
         
-    valid_owners = ["Maxmudho'ja", "Bositxon", "Bekzod", "Og'abek", "Hodimlar"]
+    valid_owners = ["Maxmudho'ja", "Abdulbosit", "Bekzod", "Og'abek", "Hodimlar"]
     if message.text not in valid_owners:
         await message.answer(
             "❌ Iltimos, ro'yxatdagi xodimlardan birini tanlang!",
@@ -291,7 +291,7 @@ async def process_new_value(message: types.Message, state: FSMContext):
             new_value = message.text
             db_field = "description"
         elif field == "owner":
-            valid_owners = ["Maxmudho'ja", "Bositxon", "Bekzod", "Og'abek", "Hodimlar"]
+            valid_owners = ["Maxmudho'ja", "Abdulbosit", "Bekzod", "Og'abek", "Hodimlar"]
             if message.text not in valid_owners:
                 raise ValueError("Noto'g'ri xodim tanlandi! Ro'yxatdagi xodimlardan birini tanlang")
             new_value = message.text
