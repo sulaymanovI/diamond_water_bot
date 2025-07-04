@@ -44,6 +44,14 @@ router = Router()
 # Define regex patterns
 REGEX_PASSPORT = r'^[A-Z]{2}\d{7}$'
 
+date_keyboard = ReplyKeyboardMarkup(
+    keyboard=[
+        [KeyboardButton(text="Bugun")],
+        [KeyboardButton(text=BACK_TO_MAIN_MENU_BTN)]
+    ],
+    resize_keyboard=True
+)
+
 @router.message(F.text == BACK_TO_MAIN_MENU_BTN)
 async def handle_back_to_main_menu(message: types.Message, state: FSMContext):
     await state.clear()
@@ -237,57 +245,22 @@ async def handle_seller_selection(callback: types.CallbackQuery, state: FSMConte
             seller_id = int(callback.data.split(":")[1])
             data = await state.get_data()
             
-            # Get seller details
             seller = await session.get(Seller, seller_id)
             if not seller:
                 await callback.answer("❌ Sotuvchi topilmadi!")
                 return
                 
-            # Get client details if exists
-            client = None
-            if data.get('client_id'):
-                client = await session.get(Client, data['client_id'])
+            await state.update_data(seller_id=seller.id)
             
-            if client:
-                # Create order if client exists
-                order_data = {
-                    'client_id': client.id,
-                    'seller_id': seller.id,
-                    'item_count': data['item_count'],
-                    'sum_of_item': data['sum_of_item'],
-                    'every_month_should_pay': data['every_month_should_pay'],
-                    'prepaid': data.get('prepaid', 0),
-                    'order_status': 'Ochiq'
-                }
-                order = Order(**order_data)
-                session.add(order)
-                
-                # Обновляем счетчик
-                seller.order_counter += 1
-                
-                await session.commit()
-
-                # Get client location if available
-                location_info = ""
-                if client.latitude and client.longitude:
-                    location_info = format_location(client.latitude, client.longitude) + "\n\n"
-
+            if data.get('client_id'):
+                # Если клиент существует, запрашиваем дату заказа
                 await callback.message.answer(
-                    f"✅ #{order.id}-buyurtma muvaffaqiyatli yaratildi!\n"
-                    f"👤 Sotuvchi: {seller.full_name}\n"
-                    f"📊 Sotuvchining jami buyurtmalari: {seller.order_counter}\n"
-                    f"👤 Mijoz: {client.full_name}\n"
-                    f"📞 Mijoz tel: {client.phone}\n"
-                    f"{location_info}"
-                    f"📦 Mahsulot soni: {data['item_count']} ta\n"
-                    f"💰 Umumiy summa: {data['sum_of_item']:,} so'm\n"
-                    f"📅 Oylik to'lov: {data['every_month_should_pay']:,} so'm\n"
-                    f"💵 Oldindan to'lov: {data.get('prepaid', 0):,} so'm",
-                    reply_markup=main_menu
+                    "Buyurtma sanasini kiriting (DD.MM.YYYY) yoki 'Bugun' tugmasini bosing:",
+                    reply_markup=date_keyboard
                 )
+                await state.set_state(OrderStates.ORDER_DATE)
             else:
-                # Proceed to collect new client info
-                await state.update_data(seller_id=seller.id)
+                # Если клиента нет, продолжаем сбор информации о клиенте
                 await callback.message.answer(
                     f"Sotuvchi tanlandi: {seller.full_name}\n"
                     f"📊 Jami buyurtmalar: {seller.order_counter}\n"
@@ -298,8 +271,86 @@ async def handle_seller_selection(callback: types.CallbackQuery, state: FSMConte
             
             await callback.answer()
         except Exception as e:
-            await session.rollback()
             await callback.message.answer(f"❌ Xatolik yuz berdi: {str(e)}")
+
+# Добавьте новый обработчик для даты заказа
+@router.message(OrderStates.ORDER_DATE)
+async def process_order_date(message: types.Message, state: FSMContext):
+    try:
+        if message.text == "Bugun":
+            order_date = datetime.now()
+        else:
+            # Парсим введенную дату (формат DD.MM.YYYY)
+            order_date = datetime.strptime(message.text, "%d.%m.%Y")
+            
+        await state.update_data(created_at=order_date)
+        
+        # Теперь создаем заказ
+        data = await state.get_data()
+        client_id = data.get('client_id')
+        
+        if not client_id:
+            await message.answer("❌ Mijoz ma'lumotlari topilmadi!")
+            await state.clear()
+            return
+            
+        order_data = {
+            'client_id': client_id,
+            'seller_id': data['seller_id'],
+            'item_count': data['item_count'],
+            'sum_of_item': data['sum_of_item'],
+            'every_month_should_pay': data['every_month_should_pay'],
+            'prepaid': data.get('prepaid', 0),
+            'order_status': 'Ochiq',
+            'created_at': order_date,
+            'remaining_amount': data['sum_of_item'] - data.get('prepaid', 0)
+        }
+        
+        async with async_session() as session:
+            order = Order(**order_data)
+            session.add(order)
+            
+            # Обновляем счетчик продавца
+            seller = await session.get(Seller, data['seller_id'])
+            seller.order_counter += 1
+            
+            await session.commit()
+            
+            # Получаем данные клиента для отображения
+            client = await session.get(Client, client_id)
+            
+            location_info = ""
+            if client.latitude and client.longitude:
+                location_info = format_location(client.latitude, client.longitude) + "\n\n"
+
+            await message.answer(
+                f"✅ #{order.id}-buyurtma muvaffaqiyatli yaratildi!\n"
+                f"📅 Sana: {order_date.strftime('%d.%m.%Y')}\n"
+                f"👤 Sotuvchi: {seller.full_name}\n"
+                f"📊 Sotuvchining jami buyurtmalari: {seller.order_counter}\n"
+                f"👤 Mijoz: {client.full_name}\n"
+                f"📞 Mijoz tel: {client.phone}\n"
+                f"{location_info}"
+                f"📦 Mahsulot soni: {data['item_count']} ta\n"
+                f"💰 Umumiy summa: {data['sum_of_item']:,} so'm\n"
+                f"📅 Oylik to'lov: {data['every_month_should_pay']:,} so'm\n"
+                f"💵 Oldindan to'lov: {data.get('prepaid', 0):,} so'm",
+                reply_markup=main_menu
+            )
+            
+        await state.clear()
+        
+    except ValueError:
+        await message.answer(
+            "❌ Noto'g'ri sana formati! Iltimos, DD.MM.YYYY formatida kiriting yoki 'Bugun' tugmasini bosing.",
+            reply_markup=date_keyboard
+        )
+    except Exception as e:
+        await message.answer(
+            f"❌ Xatolik yuz berdi: {str(e)}",
+            reply_markup=main_menu
+        )
+        await state.clear()
 
 @router.message(F.from_user.id.in_(Config.ALLOWED_USERS), F.text == "📋 Buyurtmalar ro'yxati")
 async def send_orders_excel(message: types.Message):

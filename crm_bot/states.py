@@ -22,6 +22,7 @@ class OrderStates(StatesGroup):
     CLIENT_FULLNAME = State()      
     CLIENT_PHONE = State()         
     CLIENT_ADDRESS = State()       
+    ORDER_DATE = State()
 
 class ClientStates(StatesGroup):
     FULL_NAME = State()

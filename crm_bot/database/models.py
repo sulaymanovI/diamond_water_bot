@@ -56,7 +56,7 @@ class Order(Base):
     remaining_amount = Column(Integer)
     last_notification_sent = Column(DateTime, nullable=True)
     notification_count = Column(Integer, default=0)
-    created_at = Column(DateTime, default=func.now())
+    created_at = Column(DateTime)
     order_status = Column(String(10), default='Ochiq')
     client = relationship("Client", backref="orders")
     
